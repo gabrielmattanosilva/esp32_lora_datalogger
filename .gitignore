@@ -4,3 +4,4 @@
 .vscode/launch.json
 .vscode/ipch
 esp32_lora_datalogger.txt
+include/credentials.h
