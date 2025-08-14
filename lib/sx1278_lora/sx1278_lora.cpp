@@ -33,6 +33,14 @@ bool lora_begin(void)
     return true;
 }
 
+/**
+ * @brief Lê um pacote LoRa recebido e armazena no buffer fornecido.
+ * @param buf Ponteiro para o buffer onde os dados recebidos serão armazenados.
+ * @param max_len Tamanho máximo do buffer (em bytes).
+ * @param out_rssi Ponteiro opcional para armazenar o valor do RSSI do pacote (dBm).
+ * @param out_snr Ponteiro opcional para armazenar o valor do SNR do pacote (dB).
+ * @return Número de bytes efetivamente lidos (0 se nenhum pacote foi recebido).
+ */
 uint32_t lora_read_packet(uint8_t *buf, uint16_t max_len, int16_t *out_rssi, float *out_snr)
 {
     if (!buf || max_len == 0)
