@@ -1,16 +1,29 @@
+/**
+ * @file sx1278_lora.h
+ * @brief Cabeçalho para as funções de comunicação LoRa com o módulo SX1278.
+ */
+
 #ifndef SX1278_LORA_H
 #define SX1278_LORA_H
 
-#include <stdint.h>
+#include <Arduino.h>
 #include <stdbool.h>
+#include <stdint.h>
 
-/* Inicializa rádio LoRa (433 MHz), SyncWord 0xA5. Retorna true se OK. */
-bool lora_init(void);
-
-/* Bloqueante: tenta ler um pacote para buf (até max_len).
- * Retorna número de bytes lidos (>0), e sai com *out_rssi, *out_snr.
- * Se nada disponível, retorna 0.
+/**
+ * @brief Estrutura para o payload compactado enviado via LoRa.
  */
-int  lora_read_packet(uint8_t *buf, int max_len, int *out_rssi, float *out_snr);
+typedef struct __attribute__((packed))
+{
+    uint16_t irradiance;          /* W/^2 (0..2000, 0xFFFF = erro)        */
+    uint16_t battery_voltage;     /* mV                                   */
+    int16_t internal_temperature; /* °C*10                                */
+    uint32_t timestamp;           /* s                                    */
+    uint8_t checksum;             /* soma 8-bit (dos 10 bytes anteriores) */
+} PayloadPacked;
+_Static_assert(sizeof(PayloadPacked) == 11, "Payload deve ter 11 bytes");
+
+bool lora_begin(void);
+uint32_t lora_read_packet(uint8_t *buf, uint16_t max_len, int16_t *out_rssi, float *out_snr);
 
 #endif /* SX1278_LORA_H */
