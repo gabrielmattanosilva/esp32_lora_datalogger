@@ -3,8 +3,12 @@
  * @brief Implementação de funções utilitárias.
  */
 
+static const char* TAG = "UTILS";
+
 #include "utils.h"
 #include <Arduino.h>
+#include "logger.h"
+#include <esp_log.h>
 
 /**
  * @brief Calcula uma soma de verificação 8-bit para os dados fornecidos.
@@ -65,21 +69,23 @@ bool utils_parse_payload(const uint8_t *buf, size_t len, PayloadPacked *out)
 {
     if (!buf || !out || len != sizeof(PayloadPacked))
     {
+        ESP_LOGE(TAG, "parse_payload: tamanho invalido (len=%u, esperado=%u)",
+                 (unsigned)len, (unsigned)sizeof(PayloadPacked));
         return false;
     }
 
     uint8_t calc = utils_checksum8(buf, sizeof(PayloadPacked) - 1);
-
     if (calc != buf[sizeof(PayloadPacked) - 1])
     {
+        ESP_LOGW(TAG, "checksum invalido (calc=0x%02X, rx=0x%02X)", calc, buf[10]);
         return false;
     }
 
-    out->irradiance = utils_rd_le_u16(&buf[0]);
-    out->battery_voltage = utils_rd_le_u16(&buf[2]);
-    out->internal_temperature = utils_rd_le_i16(&buf[4]);
-    out->timestamp = utils_rd_le_u32(&buf[6]);
-    out->checksum = buf[10];
+    out->irradiance          = utils_rd_le_u16(&buf[0]);
+    out->battery_voltage     = utils_rd_le_u16(&buf[2]);
+    out->internal_temperature= utils_rd_le_i16(&buf[4]);
+    out->timestamp           = utils_rd_le_u32(&buf[6]);
+    out->checksum            = buf[10];
     return true;
 }
 
@@ -90,26 +96,6 @@ bool utils_parse_payload(const uint8_t *buf, size_t len, PayloadPacked *out)
  */
 void utils_hexdump(const uint8_t *buf, int len)
 {
-    if (!buf || len <= 0)
-    {
-        return;
-    }
-
-    for (int i = 0; i < len; ++i)
-    {
-        if (i && (i % 16 == 0))
-        {
-            Serial.println();
-        }
-
-        if (buf[i] < 16)
-        {
-            Serial.print('0');
-        }
-
-        Serial.print(buf[i], HEX);
-        Serial.print(' ');
-    }
-
-    Serial.println();
+    if (!buf || len <= 0) return;
+    logger_hexdump(TAG, ESP_LOG_DEBUG, buf, (size_t)len);
 }
