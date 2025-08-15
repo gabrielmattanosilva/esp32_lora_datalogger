@@ -25,5 +25,6 @@ _Static_assert(sizeof(PayloadPacked) == 11, "Payload deve ter 11 bytes");
 
 bool lora_begin(void);
 uint32_t lora_read_packet(uint8_t *buf, uint16_t max_len, int16_t *out_rssi, float *out_snr);
+bool lora_parse_payload(const uint8_t *buf, size_t len, PayloadPacked *out);
 
 #endif /* SX1278_LORA_H */
