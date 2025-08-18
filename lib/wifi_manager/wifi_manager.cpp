@@ -45,23 +45,7 @@ static const char *wl_status_to_str(wl_status_t s)
     }
 }
 
-/**
- * @brief Inicializa o gerenciador de Wi-Fi.
- * @param ssid SSID da rede.
- * @param pass Senha da rede.
- */
-void wifi_begin(const char *ssid, const char *pass)
-{
-    g_ssid = ssid ? ssid : "";
-    g_pass = pass ? pass : "";
-    WiFi.mode(WIFI_STA);
-    g_began = false;
-    g_backoff_ms = 0;
-    g_next_try_ms = 0;
-    g_prev_status = (wl_status_t)0xFF;
-    randomSeed((uint32_t)esp_random());
-    LOGI(TAG, "init (SSID=\"%s\")", g_ssid.c_str());
-}
+/****************************** Funções privadas ******************************/
 
 /**
  * @brief Tenta conectar-se a rede Wi-Fi.
@@ -87,12 +71,12 @@ static void wifi_start_connect(void)
 }
 
 /**
- * @brief Informa se está conectado ao AP.
- * @return true se WL_CONNECTED; false caso contrário.
+ * @brief Retorna RSSI (dBm) quando conectado.
+ * @return RSSI ou 0 se desconectado.
  */
-bool wifi_is_connected(void)
+int32_t wifi_rssi(void)
 {
-    return WiFi.status() == WL_CONNECTED;
+    return wifi_is_connected() ? WiFi.RSSI() : 0;
 }
 
 /**
@@ -107,13 +91,33 @@ const char *wifi_ip_str(void)
     return ipbuf;
 }
 
+/****************************** Funções públicas ******************************/
+
 /**
- * @brief Retorna RSSI (dBm) quando conectado.
- * @return RSSI ou 0 se desconectado.
+ * @brief Inicializa o gerenciador de Wi-Fi.
+ * @param ssid SSID da rede.
+ * @param pass Senha da rede.
  */
-int32_t wifi_rssi(void)
+void wifi_begin(const char *ssid, const char *pass)
 {
-    return wifi_is_connected() ? WiFi.RSSI() : 0;
+    g_ssid = ssid ? ssid : "";
+    g_pass = pass ? pass : "";
+    WiFi.mode(WIFI_STA);
+    g_began = false;
+    g_backoff_ms = 0;
+    g_next_try_ms = 0;
+    g_prev_status = (wl_status_t)0xFF;
+    randomSeed((uint32_t)esp_random());
+    LOGI(TAG, "init (SSID=\"%s\")", g_ssid.c_str());
+}
+
+/**
+ * @brief Informa se está conectado ao AP.
+ * @return true se WL_CONNECTED; false caso contrário.
+ */
+bool wifi_is_connected(void)
+{
+    return WiFi.status() == WL_CONNECTED;
 }
 
 /**
