@@ -3,7 +3,7 @@
 
 #include <stdarg.h>
 
-bool sdcard_begin();
+void sdcard_begin();
 void sdcard_tick_rotate();
 void sdcard_printf(const char *fmt, ...) __attribute__((format(printf,1,2)));
 void sdcard_vprintf(const char *fmt, va_list ap);

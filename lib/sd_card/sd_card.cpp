@@ -204,20 +204,13 @@ static void ensure_file_for_today()
 
 /****************************** Funções públicas ******************************/
 
-bool sdcard_begin()
+void sdcard_begin()
 {
     g_cs = SD_SPI_CS;
     pinMode(g_cs, OUTPUT);
     digitalWrite(g_cs, HIGH);
     g_sd_ok = SD.begin(g_cs, SPI, 20000000);
-
-    if (!g_sd_ok)
-    {
-        return false;
-    }
-
     g_sd_ok = open_new_file_for_now();
-    return g_sd_ok;
 }
 
 void sdcard_tick_rotate()

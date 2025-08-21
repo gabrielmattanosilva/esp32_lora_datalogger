@@ -1,10 +1,11 @@
 /**
  * @file main.cpp
- * @brief Receptor LoRa com logger novo (sem níveis), RTC epoch0 e rotação diária no SD.
+ * @brief Receptor LoRa com logger, sincronização do RTC interno via DS1307,
+ *        epoch0 fallback e rotação diária no SD.
  *
  * Log format: "YYYY/MM/DD HH:MM:SS.mmm [TAG] mensagem"
- * RTC: sempre usado. No boot é setado para epoch 0 (1970-01-01 00:00:00.000 UTC).
- * SD: cria /YYYYMMDD_HHMMSS.log e rotaciona ao virar o dia (implementado em sd_card).
+ * RTC: no boot força epoch0; em seguida tenta sincronizar a partir do DS1307.
+ * SD: cria /YYYYMMDD_HHMMSS.log e rotaciona ao virar o dia (ver sd_card.cpp).
  */
 
 #include <Arduino.h>
@@ -19,12 +20,13 @@
 #include "wifi_manager.h"
 #include "thingspeak_client.h"
 
-#include "sd_card.h"   // espelhamento opcional (se SD_MIRROR_ENABLE)
-#include "logger.h"    // novo logger (sem níveis; com [TAG])
+#include "sd_card.h"     // espelhamento opcional (se SD presente)
+#include "logger.h"      // logger simples com timestamp
+#include "ds1307_rtc.h"  // <<< NOVO: sync do RTC interno a partir do DS1307
 
 static const char *TAG = "MAIN";
 
-/* ---------- Buffer/slot preenchido no ISR (bare-metal: 1 escritor) ---------- */
+/* ---------- Buffer preenchido no ISR (1 escritor) ---------- */
 static volatile bool     g_pkt_ready = false;
 static volatile uint16_t g_pkt_len   = 0;
 static volatile int16_t  g_pkt_rssi  = 0;
@@ -71,15 +73,22 @@ static void print_decoded(const PayloadPacked *p)
 
 void setup()
 {
-    // 0) RTC SEMPRE em epoch 0 no boot (1970-01-01 00:00:00.000 UTC)
+    // 0) RTC sempre em epoch 0 no boot (1970-01-01 00:00:00.000 UTC)
     logger_init_epoch0();
 
     // 1) Inicializa SD (se falhar, seguimos só com Serial)
-    if (!sdcard_begin()) {
-    }
+    sdcard_begin();
 
-    // 2) Inicia logge
-    logger_begin();    // Serial e espelho no SD
+    // 2) Inicia logger (Serial + espelho no SD)
+    logger_begin();
+
+    // 0.1) <<< NOVO >>> Sincroniza RTC interno a partir do DS1307 (se presente/valido)
+    //     Faça ANTES do sdcard_begin() para que o nome do arquivo já use data/hora reais.
+    if (ds1307_rtc_sync_at_boot()) {
+        LOG(TAG, "RTC interno sincronizado a partir do DS1307.");
+    } else {
+        LOG(TAG, "DS1307 ausente/invalido — mantendo epoch0 ate ter hora valida.");
+    }
 
     // 3) Crypto
     crypto_init(AES_KEY);
@@ -182,7 +191,7 @@ void loop()
         if (ok)  LOG("TS", "envio OK");
         else     LOG("TS", "FALHA no envio");
     } else {
-        LOG("TS", "sem conexao Wi-Fi, pacote DESCARTADO");
+        LOG("TS", "sem conexao Wi‑Fi, pacote NAO enviado");
     }
 
     // Flush gentil (sd_card.cpp já faz flush periódico)
