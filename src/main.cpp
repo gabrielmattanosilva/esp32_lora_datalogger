@@ -90,12 +90,12 @@ void setup()
 
     // 5) LoRa
     if (!lora_begin()) {
-        LOG("LORA", "Falha ao inicializar LoRa. Verifique conexoes/pinos.");
+        LOG("LORA", "Falha ao inicializar LoRa");
         for (;;) { delay(1000); }
     }
     LoRa.onReceive(on_lora_rx_isr);
     LoRa.receive();
-    LOG(TAG, "LoRa OK. RX por interrupcao habilitado.");
+    LOG(TAG, "LoRa inicializado, aguardando pacotes...");
 }
 
 void loop()
@@ -128,12 +128,12 @@ void loop()
     }
 
     // Logs brutos do pacote
-    LOG(TAG, "RX [%u B]  RSSI=%d  SNR=%.1f", (unsigned)local_len, (int)local_rssi, local_snr);
-    LOGHEX("RX", local_buf, local_len);
+    LOG("LORA", "RX [%u B]  RSSI=%d  SNR=%.1f", (unsigned)local_len, (int)local_rssi, local_snr);
+    LOGHEX("LORA", local_buf, local_len);
 
     // Validação básica: IV(16) + CT(>=16 e multiplo de 16)
     if (local_len < 32u) {
-        LOG(TAG, "Pacote curto (IV16 + CT16+). DESCARTADO.");
+        LOG(TAG, "Pacote curto (IV16 + CT16+), DESCARTADO");
         sdcard_flush();
         return;
     }
@@ -141,7 +141,7 @@ void loop()
     const uint8_t *ct = &local_buf[16];
     const uint16_t ct_len = (uint16_t)(local_len - 16u);
     if ((ct_len % 16u) != 0u) {
-        LOG(TAG, "Ciphertext nao multiplo de 16. DESCARTADO.");
+        LOG(TAG, "Ciphertext nao multiplo de 16, DESCARTADO");
         sdcard_flush();
         return;
     }
@@ -150,12 +150,12 @@ void loop()
     uint8_t plain[128];
     size_t  plain_len = 0;
     if (!crypto_decrypt(ct, (size_t)ct_len, iv, plain, &plain_len)) {
-        LOG(TAG, "AES fail. DESCARTADO.");
+        LOG(TAG, "AES fail, DESCARTADO");
         sdcard_flush();
         return;
     }
     if (plain_len != sizeof(PayloadPacked)) {
-        LOG(TAG, "Tamanho apos unpad invalido (%u). DESCARTADO.", (unsigned)plain_len);
+        LOG(TAG, "Tamanho apos unpad invalido (%u), DESCARTADO", (unsigned)plain_len);
         sdcard_flush();
         return;
     }
@@ -163,7 +163,7 @@ void loop()
     // Parse / validação do payload
     PayloadPacked p;
     if (!lora_parse_payload(plain, plain_len, &p)) {
-        LOG(TAG, "Payload invalido (checksum/estrutura). DESCARTADO.");
+        LOG(TAG, "Payload invalido (checksum/estrutura), DESCARTADO");
         sdcard_flush();
         return;
     }
@@ -179,10 +179,10 @@ void loop()
 
     if (wifi_is_connected()) {
         bool ok = thingspeak_update(THINGSPEAK_API_KEY, irr_Wm2, batt_V, temp_C, p.timestamp);
-        if (ok)  LOG("TS", "ThingSpeak: OK");
-        else     LOG("TS", "ThingSpeak: FALHA (nao sera re-enviado)");
+        if (ok)  LOG("TS", "envio OK");
+        else     LOG("TS", "FALHA no envio");
     } else {
-        LOG("TS", "ThingSpeak: sem Wi‑Fi -> pacote DESCARTADO.");
+        LOG("TS", "sem conexao Wi‑Fi, pacote DESCARTADO");
     }
 
     // Flush gentil (sd_card.cpp já faz flush periódico)

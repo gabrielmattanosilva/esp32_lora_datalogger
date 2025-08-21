@@ -4,7 +4,6 @@
  */
 
 #include "sx1278_lora.h"
-#include <Arduino.h>
 #include <SPI.h>
 #include <LoRa.h>
 #include "logger.h"

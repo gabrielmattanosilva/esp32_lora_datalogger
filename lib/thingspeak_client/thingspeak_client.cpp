@@ -64,7 +64,7 @@ bool thingspeak_update(const char *api_key,
 {
     if (!wifi_is_connected())
     {
-        LOG(TAG, "sem Wi-Fi. Nao enviado.");
+        LOG(TAG, "sem Wi-Fi, Nao enviado");
         return false;
     }
 
