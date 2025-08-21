@@ -182,7 +182,7 @@ void loop()
         if (ok)  LOG("TS", "envio OK");
         else     LOG("TS", "FALHA no envio");
     } else {
-        LOG("TS", "sem conexao Wi‑Fi, pacote DESCARTADO");
+        LOG("TS", "sem conexao Wi-Fi, pacote DESCARTADO");
     }
 
     // Flush gentil (sd_card.cpp já faz flush periódico)
