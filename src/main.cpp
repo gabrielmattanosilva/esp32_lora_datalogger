@@ -85,9 +85,9 @@ void setup()
     // 0.1) <<< NOVO >>> Sincroniza RTC interno a partir do DS1307 (se presente/valido)
     //     Faça ANTES do sdcard_begin() para que o nome do arquivo já use data/hora reais.
     if (ds1307_rtc_sync_at_boot()) {
-        LOG(TAG, "RTC interno sincronizado a partir do DS1307.");
+        LOG(TAG, "RTC interno sincronizado a partir do DS1307");
     } else {
-        LOG(TAG, "DS1307 ausente/invalido — mantendo epoch0 ate ter hora valida.");
+        LOG(TAG, "DS1307 ausente/invalido, mantendo epoch0 ate ter hora valida");
     }
 
     // 3) Crypto
