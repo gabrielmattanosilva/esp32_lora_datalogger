@@ -7,7 +7,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "wifi_manager.h"
-#include "serial_log.h"
+#include "logger.h"
 
 static const char *TAG = "TS";
 
@@ -31,7 +31,7 @@ static bool http_post_form(const String &url, const String &body)
 
     if (!http.begin(client, url))
     {
-        LOGE(TAG, "http.begin() falhou");
+        LOG(TAG, "http.begin() falhou");
         return false;
     }
 
@@ -41,7 +41,7 @@ static bool http_post_form(const String &url, const String &body)
     String payload = http.getString();
     http.end();
 
-    LOGI(TAG, "HTTP %d, payload_len=%d", code, payload.length());
+    LOG(TAG, "HTTP %d, payload_len=%d", code, payload.length());
     return (code == 200) && payload.length() > 0;
 }
 
@@ -64,7 +64,7 @@ bool thingspeak_update(const char *api_key,
 {
     if (!wifi_is_connected())
     {
-        LOGW(TAG, "sem Wi-Fi. Nao enviado.");
+        LOG(TAG, "sem Wi-Fi. Nao enviado.");
         return false;
     }
 

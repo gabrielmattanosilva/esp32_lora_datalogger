@@ -6,7 +6,7 @@
 static const char *TAG = "UTILS";
 
 #include "utils.h"
-#include "serial_log.h"
+#include "logger.h"
 
 /****************************** Funções públicas ******************************/
 

@@ -1,12 +1,12 @@
 /**
  * @file main.cpp
- * @brief Receptor LoRa com publicação opcional no ThingSpeak via Wi-Fi.
- * @details
- *  - RX por interrupção (LoRa.onReceive) com buffer 1-slot (sem fila).
- *  - Processa o pacote imediatamente (decrypt + parse + logs).
- *  - Envia ao ThingSpeak somente se Wi-Fi estiver conectado; caso contrário, descarta.
- *  - Field1 envia -1.0 quando irradiance==0xFFFF (erro).
+ * @brief Receptor LoRa com logger novo (sem níveis), RTC epoch0 e rotação diária no SD.
+ *
+ * Log format: "YYYY/MM/DD HH:MM:SS.mmm [TAG] mensagem"
+ * RTC: sempre usado. No boot é setado para epoch 0 (1970-01-01 00:00:00.000 UTC).
+ * SD: cria /YYYYMMDD_HHMMSS.log e rotaciona ao virar o dia (implementado em sd_card).
  */
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <LoRa.h>
@@ -18,184 +18,173 @@
 #include "sx1278_lora.h"
 #include "wifi_manager.h"
 #include "thingspeak_client.h"
-#include "serial_log.h"
+
+#include "sd_card.h"   // espelhamento opcional (se SD_MIRROR_ENABLE)
+#include "logger.h"    // novo logger (sem níveis; com [TAG])
 
 static const char *TAG = "MAIN";
 
-/**
- * @brief Imprime o payload decodificado em formato legível.
- * @param p Ponteiro para PayloadPacked válido.
- */
+/* ---------- Buffer/slot preenchido no ISR (bare-metal: 1 escritor) ---------- */
+static volatile bool     g_pkt_ready = false;
+static volatile uint16_t g_pkt_len   = 0;
+static volatile int16_t  g_pkt_rssi  = 0;
+static volatile float    g_pkt_snr   = 0.0f;
+static uint8_t           g_pkt_buf[128];
+
+/* ---------- Protótipos ---------- */
+static void print_decoded(const PayloadPacked *p);
+static void on_lora_rx_isr(int packetSize);
+
+/* ---------- ISR DIO0: leve (copia bytes e metadata) ---------- */
+static void on_lora_rx_isr(int packetSize)
+{
+    if (packetSize <= 0) return;
+    if (packetSize > (int)sizeof(g_pkt_buf)) packetSize = sizeof(g_pkt_buf);
+
+    int n = 0;
+    while (LoRa.available() && n < packetSize) {
+        g_pkt_buf[n++] = (uint8_t)LoRa.read();
+    }
+    g_pkt_len   = (uint16_t)n;
+    g_pkt_rssi  = LoRa.packetRssi();
+    g_pkt_snr   = LoRa.packetSnr();
+    g_pkt_ready = true; // sobrescreve se o anterior não foi processado
+}
+
+/* ---------- Log humano do payload ---------- */
 static void print_decoded(const PayloadPacked *p)
 {
     const bool irr_error = (p->irradiance == 0xFFFF);
-    const float batt_V = p->battery_voltage / 1000.0f;
-    const float temp_C = p->internal_temperature / 10.0f;
+    const float batt_V   = p->battery_voltage / 1000.0f;
+    const float temp_C   = p->internal_temperature / 10.0f;
 
-    LOGI(TAG, "---- Pacote decodificado ----");
-    if (irr_error)
-    {
-        LOGW(TAG, "Irradiancia : ERRO (0xFFFF)");
-    }
-    else
-    {
-        LOGI(TAG, "Irradiancia : %u W/m^2", (unsigned)p->irradiance);
-    }
-    LOGI(TAG, "Bateria     : %.3f V", batt_V);
-    LOGI(TAG, "Temp. int.  : %.1f C", temp_C);
-    LOGI(TAG, "Timestamp   : %lu s", (unsigned long)p->timestamp);
-    LOGI(TAG, "Checksum    : 0x%02X", p->checksum);
-    LOGI(TAG, "-----------------------------");
-}
+    LOG(TAG, "---- Pacote decodificado ----");
+    if (irr_error)  LOG(TAG, "Irradiancia : ERRO (0xFFFF)");
+    else            LOG(TAG, "Irradiancia : %u W/m^2", (unsigned)p->irradiance);
 
-// Buffer 1-slot preenchido na interrupção
-static volatile bool g_pkt_ready = false; ///< Indica que há pacote pendente.
-static volatile uint16_t g_pkt_len = 0;   ///< Tamanho do pacote pendente.
-static volatile int16_t g_pkt_rssi = 0;   ///< RSSI do pacote.
-static volatile float g_pkt_snr = 0;      ///< SNR do pacote.
-static uint8_t g_pkt_buf[128];            ///< Buffer do pacote (máx 128B).
-
-/**
- * @brief Callback chamado pelo driver LoRa ao receber um pacote (DIO0).
- * @param packetSize Número de bytes disponibilizados pelo rádio.
- * @note Leve: apenas copia bytes e atualiza metadados. Não faz decrypt/HTTP aqui.
- */
-static void lora_on_rx_isr(int packetSize)
-{
-    if (packetSize <= 0)
-        return;
-    if (packetSize > (int)sizeof(g_pkt_buf))
-        packetSize = sizeof(g_pkt_buf);
-
-    int n = 0;
-    while (LoRa.available() && n < packetSize)
-    {
-        g_pkt_buf[n++] = (uint8_t)LoRa.read();
-    }
-    g_pkt_len = (uint16_t)n;
-    g_pkt_rssi = LoRa.packetRssi();
-    g_pkt_snr = LoRa.packetSnr();
-    g_pkt_ready = true; // sobrescreve anterior se não processado
+    LOG(TAG, "Bateria     : %.3f V", batt_V);
+    LOG(TAG, "Temp. int.  : %.1f C", temp_C);
+    LOG(TAG, "Timestamp   : %lu s", (unsigned long)p->timestamp);
+    LOG(TAG, "Checksum    : 0x%02X", p->checksum);
+    LOG(TAG, "-----------------------------");
 }
 
 void setup()
 {
-    Serial.begin(115200);
-    while (!Serial)
-    {
+    // 0) RTC SEMPRE em epoch 0 no boot (1970-01-01 00:00:00.000 UTC)
+    logger_init_epoch0();
+
+    // 1) Inicializa SD (se falhar, seguimos só com Serial)
+    if (!sdcard_begin()) {
     }
 
-    LOGI(TAG, "Iniciando datalogger...");
-    LOGI(TAG, "AES-128-CBC; Formato: IV(16) || CT(16*n) -> Payload(11B)");
+    // 2) Inicia logge
+    logger_begin();    // Serial e espelho no SD
+
+    // 3) Crypto
     crypto_init(AES_KEY);
 
-    // Wi-Fi: reconexão não-bloqueante
+    // 4) Wi‑Fi (não bloqueante)
     wifi_begin(WIFI_SSID, WIFI_PASSWORD);
     wifi_force_reconnect();
 
-    // LoRa
-    if (!lora_begin())
-    {
-        LOGE(TAG, "Falha ao inicializar LoRa. Verifique conexoes/pinos.");
-        for (;;)
-        {
-            delay(1000);
-        }
+    // 5) LoRa
+    if (!lora_begin()) {
+        LOG("LORA", "Falha ao inicializar LoRa. Verifique conexoes/pinos.");
+        for (;;) { delay(1000); }
     }
-    LoRa.onReceive(lora_on_rx_isr);
+    LoRa.onReceive(on_lora_rx_isr);
     LoRa.receive();
-    LOGI(TAG, "LoRa OK. RX imediato por interrupcao habilitado.");
+    LOG(TAG, "LoRa OK. RX por interrupcao habilitado.");
 }
 
 void loop()
 {
-    // Mantém reconexão Wi-Fi (sem bloquear)
+    // Rotação diária do arquivo de log no SD
+    sdcard_tick_rotate();
+
+    // Máquina de estados do Wi‑Fi (non‑blocking)
     wifi_tick(millis());
 
-    // Copia atômica do pacote pendente para buffers locais
-    uint8_t local_buf[128];
+    // Captura atômica do slot do ISR
+    uint8_t  local_buf[128];
     uint16_t local_len = 0;
-    int16_t local_rssi = 0;
-    float local_snr = 0.0f;
+    int16_t  local_rssi = 0;
+    float    local_snr  = 0.0f;
 
     noInterrupts();
-    if (g_pkt_ready)
-    {
-        local_len = g_pkt_len;
+    if (g_pkt_ready) {
+        local_len  = g_pkt_len;
         local_rssi = g_pkt_rssi;
-        local_snr = g_pkt_snr;
-        for (uint16_t i = 0; i < local_len; ++i)
-            local_buf[i] = g_pkt_buf[i];
-        g_pkt_ready = false; // consome (sem fila/armazenamento)
+        local_snr  = g_pkt_snr;
+        for (uint16_t i = 0; i < local_len; ++i) local_buf[i] = g_pkt_buf[i];
+        g_pkt_ready = false;
     }
     interrupts();
 
-    if (local_len == 0)
-    {
+    if (local_len == 0) {
         delay(1);
         return;
     }
 
-    LOGI(TAG, "RX [%u B]  RSSI=%d  SNR=%.1f", (unsigned)local_len, (int)local_rssi, local_snr);
-    LOG_HEXDUMP(TAG, 'D', local_buf, local_len);
+    // Logs brutos do pacote
+    LOG(TAG, "RX [%u B]  RSSI=%d  SNR=%.1f", (unsigned)local_len, (int)local_rssi, local_snr);
+    LOGHEX("RX", local_buf, local_len);
 
-    // Validação básica: IV(16) + CT(>=16 e múltiplo de 16)
-    if (local_len < 32u)
-    {
-        LOGW(TAG, "Pacote curto (IV16 + CT16+). DESCARTADO.");
+    // Validação básica: IV(16) + CT(>=16 e multiplo de 16)
+    if (local_len < 32u) {
+        LOG(TAG, "Pacote curto (IV16 + CT16+). DESCARTADO.");
+        sdcard_flush();
         return;
     }
     const uint8_t *iv = &local_buf[0];
     const uint8_t *ct = &local_buf[16];
-    uint16_t ct_len = (uint16_t)(local_len - 16u);
-    if ((ct_len % 16u) != 0u)
-    {
-        LOGW(TAG, "Ciphertext nao multiplo de 16. DESCARTADO.");
+    const uint16_t ct_len = (uint16_t)(local_len - 16u);
+    if ((ct_len % 16u) != 0u) {
+        LOG(TAG, "Ciphertext nao multiplo de 16. DESCARTADO.");
+        sdcard_flush();
         return;
     }
 
     // Decrypt + unpad
     uint8_t plain[128];
-    size_t plain_len = 0;
-    if (!crypto_decrypt(ct, (size_t)ct_len, iv, plain, &plain_len))
-    {
-        LOGW(TAG, "AES fail. DESCARTADO.");
+    size_t  plain_len = 0;
+    if (!crypto_decrypt(ct, (size_t)ct_len, iv, plain, &plain_len)) {
+        LOG(TAG, "AES fail. DESCARTADO.");
+        sdcard_flush();
         return;
     }
-    if (plain_len != sizeof(PayloadPacked))
-    {
-        LOGW(TAG, "Tamanho apos unpad invalido (%u). DESCARTADO.", (unsigned)plain_len);
+    if (plain_len != sizeof(PayloadPacked)) {
+        LOG(TAG, "Tamanho apos unpad invalido (%u). DESCARTADO.", (unsigned)plain_len);
+        sdcard_flush();
         return;
     }
 
-    // Parse
+    // Parse / validação do payload
     PayloadPacked p;
-    if (!lora_parse_payload(plain, plain_len, &p))
-    {
-        LOGW(TAG, "Payload invalido (checksum/estrutura). DESCARTADO.");
+    if (!lora_parse_payload(plain, plain_len, &p)) {
+        LOG(TAG, "Payload invalido (checksum/estrutura). DESCARTADO.");
+        sdcard_flush();
         return;
     }
 
-    // Human readable
+    // Log humano
     print_decoded(&p);
 
-    // Campos ThingSpeak (Field1 = -1 em erro de irradiância)
+    // Envio opcional ao ThingSpeak
     const bool irr_error = (p.irradiance == 0xFFFF);
-    float irr_Wm2 = irr_error ? -1.0f : (float)p.irradiance;
-    float batt_V = p.battery_voltage / 1000.0f;
-    float temp_C = p.internal_temperature / 10.0f;
+    const float irr_Wm2  = irr_error ? -1.0f : (float)p.irradiance;
+    const float batt_V   = p.battery_voltage / 1000.0f;
+    const float temp_C   = p.internal_temperature / 10.0f;
 
-    // Envia somente se Wi-Fi estiver conectado; caso contrário, descarta (sem reenvio)
-    if (wifi_is_connected())
-    {
+    if (wifi_is_connected()) {
         bool ok = thingspeak_update(THINGSPEAK_API_KEY, irr_Wm2, batt_V, temp_C, p.timestamp);
-        if (ok)
-            LOGI(TAG, "ThingSpeak: OK");
-        else
-            LOGE(TAG, "ThingSpeak: FALHA (nao sera re-enviado)");
+        if (ok)  LOG("TS", "ThingSpeak: OK");
+        else     LOG("TS", "ThingSpeak: FALHA (nao sera re-enviado)");
+    } else {
+        LOG("TS", "ThingSpeak: sem Wi‑Fi -> pacote DESCARTADO.");
     }
-    else
-    {
-        LOGW(TAG, "ThingSpeak: sem Wi-Fi -> pacote DESCARTADO.");
-    }
+
+    // Flush gentil (sd_card.cpp já faz flush periódico)
+    sdcard_flush();
 }

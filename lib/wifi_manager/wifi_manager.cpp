@@ -5,7 +5,7 @@
 
 #include "wifi_manager.h"
 #include <WiFi.h>
-#include "serial_log.h"
+#include "logger.h"
 
 /* Parâmetros de retry */
 #define BACKOFF_MIN_S 3000
@@ -59,13 +59,13 @@ static void wifi_start_connect(void)
 
     if (!g_began)
     {
-        LOGI(TAG, "begin() tentando conectar a \"%s\"...", g_ssid.c_str());
+        LOG(TAG, "begin() tentando conectar a \"%s\"...", g_ssid.c_str());
         WiFi.begin(g_ssid.c_str(), g_pass.c_str());
         g_began = true;
     }
     else
     {
-        LOGI(TAG, "reconnect() tentando reconectar...");
+        LOG(TAG, "reconnect() tentando reconectar...");
         WiFi.reconnect();
     }
 }
@@ -108,7 +108,7 @@ void wifi_begin(const char *ssid, const char *pass)
     g_next_try_ms = 0;
     g_prev_status = (wl_status_t)0xFF;
     randomSeed((uint32_t)esp_random());
-    LOGI(TAG, "init (SSID=\"%s\")", g_ssid.c_str());
+    LOG(TAG, "init (SSID=\"%s\")", g_ssid.c_str());
 }
 
 /**
@@ -125,7 +125,7 @@ bool wifi_is_connected(void)
  */
 void wifi_force_reconnect(void)
 {
-    LOGW(TAG, "force_reconnect()");
+    LOG(TAG, "force_reconnect()");
     g_began = false;
     g_backoff_ms = 0;
     g_next_try_ms = 0;
@@ -143,13 +143,13 @@ void wifi_tick(uint32_t now_ms)
     {
         if (cur == WL_CONNECTED)
         {
-            LOGI(TAG, "CONECTADO  IP=%s  RSSI=%d dBm", wifi_ip_str(), (int)WiFi.RSSI());
+            LOG(TAG, "CONECTADO  IP=%s  RSSI=%d dBm", wifi_ip_str(), (int)WiFi.RSSI());
             g_backoff_ms = BACKOFF_MIN_S;
             g_next_try_ms = now_ms + CONNECT_GUARD_MS;
         }
         else
         {
-            LOGW(TAG, "DESCONECTADO (%s)", wl_status_to_str(cur));
+            LOG(TAG, "DESCONECTADO (%s)", wl_status_to_str(cur));
             if (g_backoff_ms == 0)
             {
                 g_backoff_ms = BACKOFF_MIN_S;
@@ -186,6 +186,6 @@ void wifi_tick(uint32_t now_ms)
         g_backoff_ms = (g_backoff_ms < BACKOFF_MAX_S) ? (g_backoff_ms * 2) : BACKOFF_MAX_S;
         uint32_t jitter = g_backoff_ms / 10U;
         g_next_try_ms += (jitter ? random(0, jitter) : 0);
-        LOGD(TAG, "proxima janela em ~%u ms", (unsigned)(g_next_try_ms - now_ms));
+        LOG(TAG, "proxima janela em ~%u ms", (unsigned)(g_next_try_ms - now_ms));
     }
 }

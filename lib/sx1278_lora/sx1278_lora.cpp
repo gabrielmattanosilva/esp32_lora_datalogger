@@ -7,7 +7,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <LoRa.h>
-#include "serial_log.h"
+#include "logger.h"
 #include "pins.h"
 #include "crypto.h"
 #include "credentials.h"
@@ -23,20 +23,20 @@ static const char *TAG = "LORA";
  */
 bool lora_begin(void)
 {
-    pinMode(SPI_SS, OUTPUT);
-    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SPI_SS);
+    pinMode(SX1278_SPI_SS, OUTPUT);
+    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SX1278_SPI_SS);
     LoRa.setSPI(SPI);
-    LoRa.setPins(SPI_SS, SX1278_RST, SX1278_DIO0);
+    LoRa.setPins(SX1278_SPI_SS, SX1278_RST, SX1278_DIO0);
 
     if (!LoRa.begin(433E6))
     {
-        LOGE(TAG, "begin(433E6) falhou");
+        LOG(TAG, "begin(433E6) falhou");
         return false;
     }
 
     LoRa.setSyncWord(0xA5);
 
-    LOGI(TAG, "inicializado: freq=433MHz, sync=0xA5");
+    LOG(TAG, "inicializado: freq=433MHz, sync=0xA5");
     return true;
 }
 
@@ -79,7 +79,7 @@ uint32_t lora_read_packet(uint8_t *buf, uint16_t max_len, int16_t *out_rssi, flo
         *out_snr = LoRa.packetSnr();
     }
 
-    LOGD(TAG, "RX %u bytes (RSSI=%d, SNR=%.1f)", (unsigned)n,
+    LOG(TAG, "RX %u bytes (RSSI=%d, SNR=%.1f)", (unsigned)n,
          out_rssi ? *out_rssi : 0, out_snr ? *out_snr : 0.0f);
     return n;
 }
@@ -95,7 +95,7 @@ bool lora_parse_payload(const uint8_t *buf, size_t len, PayloadPacked *out)
 {
     if (!buf || !out || len != sizeof(PayloadPacked))
     {
-        LOGE(TAG, "parse_payload: tamanho invalido (len=%u, esperado=%u)",
+        LOG(TAG, "parse_payload: tamanho invalido (len=%u, esperado=%u)",
              (unsigned)len, (unsigned)sizeof(PayloadPacked));
         return false;
     }
@@ -104,7 +104,7 @@ bool lora_parse_payload(const uint8_t *buf, size_t len, PayloadPacked *out)
 
     if (calc != buf[sizeof(PayloadPacked) - 1])
     {
-        LOGW(TAG, "checksum invalido (calc=0x%02X, rx=0x%02X)", calc, buf[10]);
+        LOG(TAG, "checksum invalido (calc=0x%02X, rx=0x%02X)", calc, buf[10]);
         return false;
     }
 
