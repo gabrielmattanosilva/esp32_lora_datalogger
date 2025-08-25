@@ -1,3 +1,8 @@
+/**
+ * @file logger.cpp
+ * @brief Utilitário de logging com timestamp para Serial e arquivo no SD.
+ */
+
 #include "logger.h"
 #include <Arduino.h>
 #include "sd_card.h"
@@ -7,6 +12,11 @@ static char s_line[256];
 
 /****************************** Funções privadas ******************************/
 
+/**
+ * @brief Formata o timestamp atual em horário local com milissegundos.
+ * @param out Buffer de saída para a string de timestamp.
+ * @param outlen Tamanho do buffer @p out, em bytes.
+ */
 static void format_timestamp(char *out, size_t outlen)
 {
     time_t now = time(nullptr);
@@ -20,6 +30,9 @@ static void format_timestamp(char *out, size_t outlen)
 
 /****************************** Funções públicas ******************************/
 
+/**
+ * @brief Inicializa o RTC interno em @c epoch 0 (1970-01-01 00:00:00 UTC).
+ */
 void logger_init_epoch0()
 {
     struct timeval tv;
@@ -28,6 +41,9 @@ void logger_init_epoch0()
     settimeofday(&tv, nullptr);
 }
 
+/**
+ * @brief Inicializa o logger, garantindo a Serial e registrando mensagem "pronto".
+ */
 void logger_begin()
 {
     if (!Serial)
@@ -51,6 +67,12 @@ void logger_begin()
     sdcard_printf("%s [LOGGER] pronto\n", ts);
 }
 
+/**
+ * @brief Imprime uma mensagem de log formatada com timestamp e @p tag.
+ * @param tag Rótulo do subsistema/área (ex.: "MAIN", "LORA"); se @c nullptr, usa "LOG".
+ * @param fmt String de formato no estilo @c printf().
+ * @param ... Argumentos variáveis correspondentes a @p fmt.
+ */
 void logger_log(const char *tag, const char *fmt, ...)
 {
     if (!g_log_ready)
@@ -78,6 +100,12 @@ void logger_log(const char *tag, const char *fmt, ...)
     sdcard_printf("%s [%s] %s\n", ts, t, s_line);
 }
 
+/**
+ * @brief Gera um hexdump do buffer indicado, com timestamp e @p tag.
+ * @param tag Rótulo do subsistema/área (opcional); se @c nullptr, usa "LOG".
+ * @param buf Ponteiro para o buffer de dados a ser despejado em hexadecimal.
+ * @param len Tamanho, em bytes, do buffer @p buf.
+ */
 void logger_hexdump(const char *tag, const uint8_t *buf, size_t len)
 {
     if (!buf || len == 0)

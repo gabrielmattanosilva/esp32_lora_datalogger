@@ -1,3 +1,8 @@
+/**
+ * @file ds1307_rtc.cpp
+ * @brief Integração com o RTC DS1307 usando RTClib para sincronizar o RTC interno do ESP32.
+ */
+
 #include "ds1307_rtc.h"
 #include <Wire.h>
 #include <RTClib.h>
@@ -11,12 +16,22 @@ static bool g_rtc_ready = false;
 
 /****************************** Funções privadas ******************************/
 
+/**
+ * @brief Valida se a data/hora lida é "razoável" (ano entre 2000 e 2099).
+ * @param dt Objeto @c DateTime lido do DS1307.
+ * @return true se o ano estiver no intervalo [2000, 2099], false caso contrário.
+ */
 static bool datetime_is_reasonable(const DateTime &dt)
 {
     const int y = dt.year();
     return (y >= 2000) && (y <= 2099);
 }
 
+/**
+ * @brief Inicializa o DS1307 e o barramento I2C, verificando se o relógio está rodando.
+ * @return true se o dispositivo respondeu no I2C (inicializado com sucesso),
+ *         false se o DS1307 não respondeu.
+ */
 bool ds1307_rtc_begin(void)
 {
     if (!g_wire_started)
@@ -49,6 +64,12 @@ bool ds1307_rtc_begin(void)
 
 /****************************** Funções públicas ******************************/
 
+/**
+ * @brief Sincroniza o RTC interno do ESP32 a partir do DS1307 durante o boot.
+ * @return true se a sincronização ocorreu com sucesso, false se o dispositivo
+ *         não estiver pronto, o relógio estiver parado, a data/hora for inválida
+ *         ou @c settimeofday() falhar.
+ */
 bool ds1307_rtc_sync_at_boot(void)
 {
     if (!g_rtc_ready && !ds1307_rtc_begin())

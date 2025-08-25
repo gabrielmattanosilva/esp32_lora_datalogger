@@ -1,3 +1,8 @@
+/**
+ * @file sd_card.cpp
+ * @brief Rotina de registro em cartão SD com rotação diária e cabeçalho de sessão.
+ */
+
 #include "sd_card.h"
 #include <SPI.h>
 #include <SD.h>
@@ -14,11 +19,22 @@ static uint32_t g_lines_since_flush = 0;
 
 /****************************** Funções privadas ******************************/
 
+/**
+ * @brief Verifica se uma @c struct tm representa a data 1970-01-01 (época zero).
+ * @param tm Referência constante para a estrutura de tempo local.
+ * @return true se a data for exatamente 1970-01-01, false caso contrário.
+ */
 static inline bool tm_is_epoch0(const struct tm &tm)
 {
     return (tm.tm_year + 1900) == 1970 && (tm.tm_mon + 1) == 1 && tm.tm_mday == 1;
 }
 
+/**
+ * @brief Gera um nome de arquivo no formato @c /YYYYMMDD_HHMMSS.log a partir de @c struct tm.
+ * @param tm Ponteiro para a estrutura de tempo local usada para formatar.
+ * @param out Buffer de saída que receberá a string do caminho do arquivo.
+ * @param outlen Tamanho do buffer de saída @p out.
+ */
 static void make_filename_from_tm(const struct tm *tm, char *out, size_t outlen)
 {
     snprintf(out, outlen, "/%04d%02d%02d_%02d%02d%02d.log",
@@ -30,6 +46,9 @@ static void make_filename_from_tm(const struct tm *tm, char *out, size_t outlen)
              tm->tm_sec);
 }
 
+/**
+ * @brief Fecha o arquivo atual de log, efetuando @c flush antes.
+ */
 static void close_file()
 {
     if (g_file)
@@ -39,6 +58,9 @@ static void close_file()
     }
 }
 
+/**
+ * @brief Escreve no início do arquivo uma linha de cabeçalho com data/hora de início de log.
+ */
 static void write_header_line()
 {
     time_t now = time(nullptr);
@@ -54,11 +76,21 @@ static void write_header_line()
     g_lines_since_flush = 0;
 }
 
+/**
+ * @brief Obtém um inteiro no formato @c YYYYMMDD a partir de @c struct tm.
+ * @param tm Ponteiro para a estrutura de tempo local.
+ * @return int Data compactada como @c YYYYMMDD.
+ */
 static int current_ymd_from_tm(const struct tm *tm)
 {
     return (tm->tm_year + 1900) * 10000 + (tm->tm_mon + 1) * 100 + tm->tm_mday;
 }
 
+/**
+ * @brief Busca a próxima sequência disponível para arquivos com data época-zero.
+ * @return unsigned long Próxima sequência disponível; retorna @c 0
+ *         se nenhum arquivo no padrão for encontrado.
+ */
 static unsigned long find_next_epoch0_seq()
 {
     unsigned long max_seq = (unsigned long)0;
@@ -134,6 +166,10 @@ static unsigned long find_next_epoch0_seq()
     return found_any ? (max_seq + 1UL) : 0UL;
 }
 
+/**
+ * @brief Abre um novo arquivo de log baseado no horário atual ou no esquema de época-zero.
+ * @return true se o arquivo foi aberto com sucesso, false se a abertura falhar.
+ */
 static bool open_new_file_for_now()
 {
     time_t now = time(nullptr);
@@ -172,6 +208,9 @@ static bool open_new_file_for_now()
     return true;
 }
 
+/**
+ * @brief Garante que existe um arquivo aberto para o "dia de hoje", rotacionando se necessário.
+ */
 static void ensure_file_for_today()
 {
     if (!g_sd_ok)
@@ -204,6 +243,9 @@ static void ensure_file_for_today()
 
 /****************************** Funções públicas ******************************/
 
+/**
+ * @brief Inicializa a interface com o cartão SD e abre o primeiro arquivo de log.
+ */
 void sdcard_begin()
 {
     g_cs = SD_SPI_CS;
@@ -213,6 +255,9 @@ void sdcard_begin()
     g_sd_ok = open_new_file_for_now();
 }
 
+/**
+ * @brief Rotina periódica para avaliar rotação diária do arquivo de log.
+ */
 void sdcard_tick_rotate()
 {
     if (!g_sd_ok)
@@ -223,6 +268,11 @@ void sdcard_tick_rotate()
     ensure_file_for_today();
 }
 
+/**
+ * @brief Versão @c vprintf para escrever linhas formatadas no arquivo de log.
+ * @param fmt String de formato no estilo @c printf().
+ * @param ap Lista de argumentos variável (va_list) correspondente a @p fmt.
+ */
 void sdcard_vprintf(const char *fmt, va_list ap)
 {
     if (!g_sd_ok || !g_file)
@@ -252,6 +302,11 @@ void sdcard_vprintf(const char *fmt, va_list ap)
     }
 }
 
+/**
+ * @brief Escreve no arquivo de log usando formato @c printf() com argumentos variáveis.
+ * @param fmt String de formato no estilo @c printf().
+ * @param ... Argumentos variáveis para @p fmt.
+ */
 void sdcard_printf(const char *fmt, ...)
 {
     if (!g_sd_ok || !g_file)
@@ -265,6 +320,9 @@ void sdcard_printf(const char *fmt, ...)
     va_end(ap);
 }
 
+/**
+ * @brief Força a gravação (flush) do arquivo de log atual.
+ */
 void sdcard_flush()
 {
     if (!g_sd_ok || !g_file)
@@ -275,6 +333,9 @@ void sdcard_flush()
     g_file.flush();
 }
 
+/**
+ * @brief Encerra o subsistema de SD, fechando o arquivo atual e desabilitando o uso.
+ */
 void sdcard_end()
 {
     close_file();

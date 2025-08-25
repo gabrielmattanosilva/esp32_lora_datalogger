@@ -1,3 +1,8 @@
+/**
+ * @file logger.cpp
+ * @brief Cabeçalho para o utilitário de logging com timestamp para Serial e arquivo no SD.
+ */
+
 #ifndef LOGGER_H
 #define LOGGER_H
 

@@ -1,3 +1,9 @@
+/**
+ * @file sd_card.cpp
+ * @brief Cabeçalho para a rotina de registro em cartão SD com rotação
+ *        diária e cabeçalho de sessão.
+ */
+
 #ifndef SD_CARD_H
 #define SD_CARD_H
 
