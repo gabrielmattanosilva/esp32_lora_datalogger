@@ -6,11 +6,12 @@
 #include "wifi_manager.h"
 #include <WiFi.h>
 #include "logger.h"
+#include "pins.h"
 
 /* Parâmetros de retry */
-#define BACKOFF_MIN_S 3000
-#define BACKOFF_MAX_S 300000
-#define CONNECT_GUARD_MS 12000
+#define BACKOFF_MIN_S       3000
+#define BACKOFF_MAX_S       300000
+#define CONNECT_GUARD_MS    12000
 
 /* Estados */
 static String g_ssid, g_pass;
@@ -46,6 +47,15 @@ static const char *wl_status_to_str(wl_status_t s)
 }
 
 /****************************** Funções privadas ******************************/
+
+/**
+ * @brief Define o estado do LED indicador de conexão Wi-Fi.
+ * @param state estado do LED.
+ */
+static void wifi_set_led_pin(bool state)
+{
+    digitalWrite(WIFI_LED, state ? HIGH : LOW);
+}
 
 /**
  * @brief Tenta conectar-se a rede Wi-Fi.
@@ -108,6 +118,8 @@ void wifi_begin(const char *ssid, const char *pass)
     g_next_try_ms = 0;
     g_prev_status = (wl_status_t)0xFF;
     randomSeed((uint32_t)esp_random());
+    pinMode(WIFI_LED, OUTPUT);
+    wifi_set_led_pin(false);
     LOG(TAG, "init (SSID=\"%s\")", g_ssid.c_str());
 }
 
@@ -144,12 +156,15 @@ void wifi_tick(uint32_t now_ms)
         if (cur == WL_CONNECTED)
         {
             LOG(TAG, "CONECTADO  IP=%s  RSSI=%d dBm", wifi_ip_str(), (int)WiFi.RSSI());
+            wifi_set_led_pin(true);
             g_backoff_ms = BACKOFF_MIN_S;
             g_next_try_ms = now_ms + CONNECT_GUARD_MS;
         }
         else
         {
             LOG(TAG, "DESCONECTADO (%s)", wl_status_to_str(cur));
+            wifi_set_led_pin(false);
+
             if (g_backoff_ms == 0)
             {
                 g_backoff_ms = BACKOFF_MIN_S;
